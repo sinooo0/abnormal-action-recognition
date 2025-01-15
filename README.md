@@ -14,11 +14,14 @@
 ```bash
 conda create -n action_recognition python=3.12 -y
 ```
+
+### 0-2. Conda 가상환경 실행
+
 ```bash
 conda activate action_recognition
 ```
 
-### 0-2. 의존성 설치
+### 0-3. 의존성 설치
 
 `requirements.txt` 파일을 통해 필요한 라이브러리를 설치합니다:
 
