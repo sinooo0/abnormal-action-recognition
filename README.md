@@ -12,11 +12,16 @@
 ### 0-1. Conda 가상환경 생성
 
 ```bash
-conda create -n env python=3.12 -y
-conda activate env
+conda create -n action_recognition python=3.12 -y
 ```
 
-### 0-2. 의존성 설치
+### 0-2. Conda 가상환경 실행
+
+```bash
+conda activate action_recognition
+```
+
+### 0-3. 의존성 설치
 
 `requirements.txt` 파일을 통해 필요한 라이브러리를 설치합니다:
 
@@ -36,18 +41,19 @@ pip install -r requirements.txt
 ### 1-2. `LSTM_Data_Video.py`
 
 - 동영상에서 프레임을 캡처한 후 YOLO-pose로 키포인트를 추출해 CSV 파일로 저장
-- Video 폴더 내 "Class\_Num. Class\_Name" 형식의 파일에서 동영상을 불러옴ex) 0. Run
+- Video 폴더 내 "Class\_Num. Class\_Name" 형식의 파일에서 동영상을 불러옴
 - CSV 파일은 `LSTM_Data` 폴더 내 각 클래스 번호 폴더에 저장됨
 
 ### 1-3. `LSTM_Data_Capture.py`
 
-- 동영상에서 프레임을 캡처한 후 YOLO-pose로 키포인트를 추출해 이미지와 CSV 파일로 저장
-- 동영상이 들어있는 폴더 경로 입력 시, 동영상별 폴더를 생성해 이미지와 CSV 파일을 프레임별로 저장함
+- 동영상에서 프레임을 캡처한 후 YOLO-pose로 키포인트를 추출해 이미지와 각 ID의 CSV 파일로 저장
+- 동영상이 들어있는 폴더 경로 입력 시, 동영상별 폴더를 생성해 이미지와 각 ID의 CSV 파일을 프레임별로 저장함
 
 ### 1-4. `LSTM_Data_Delete_Labels.py`
 
-- 이미지와 동일한 이름의 CSV 파일만 남기고 나머지 CSV 파일 삭제
+- 이미지와 같은 프레임의 CSV 파일만 남기고 나머지 CSV 파일 삭제
 - `1-3`에서 필요한 이미지만 분류한 후 실행
+- 3프레임 단위로 이미지를 분류해야 학습할 때 문제가 발생하지 않음
 
 ---
 
