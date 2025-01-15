@@ -1,0 +1,9 @@
+opencv-python
+pandas
+ultralytics
+numpy
+tensorflow
+keras
+scikit-learn
+roboflow
+lap
