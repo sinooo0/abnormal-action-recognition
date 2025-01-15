@@ -30,7 +30,7 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, cl
         frame_count = 0
         saved_count = 1
 
-        tracker_initialized = False  # 비디오마다 추적기 초기화
+        tracker_initialized = False
 
         while True:
             ret, frame = cap.read()
@@ -39,15 +39,12 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, cl
 
             if frame_count % frame_interval == 0:
                 if not tracker_initialized:
-                    # 비디오 변경 시 추적기 초기화 (persist=False)
                     results = model.track(frame, persist=False)
                     tracker_initialized = True
                 else:
-                    # 이후 프레임부터 추적 (persist=True)
                     results = model.track(frame, persist=True)
 
                 annotated_frame = results[0].plot()
-
                 frame_filename = os.path.join(image_dir, f"{video_name}_{saved_count}.png")
                 cv2.imwrite(frame_filename, annotated_frame)
 
@@ -59,10 +56,13 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, cl
                         flat_keypoints = person_keypoints.flatten().tolist()[:34]
                         flat_keypoints += [class_id]
 
-                        csv_filename = os.path.join(label_dir, f"{video_name}_{saved_count}_id_{int(person_id)}.csv")
+                        person_label_dir = os.path.join(label_dir, f"id_{int(person_id)}")
+                        os.makedirs(person_label_dir, exist_ok=True)
+
+                        csv_filename = os.path.join(person_label_dir, f"{video_name}_{saved_count}.csv")
                         with open(csv_filename, mode='w', newline='') as file:
                             writer = csv.writer(file)
-                            headers = [f'kp_{i+1}' for i in range(34)] + ['action_class']
+                            headers = [f'kp{i}_x' if j % 2 == 0 else f'kp{i}_y' for i in range(17) for j in range(2)] + ['action_class']
                             writer.writerow(headers)
                             writer.writerow(flat_keypoints)
 
@@ -75,8 +75,8 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, cl
 
 # 실행
 video_dir = './Video/2.theft/'
-output_dir = './Capture'
-model_path = './Model/yolo11s-pose.pt'
+output_dir = './Data/LSTM_Capture'
+model_path = './Model/yolo11m-pose.pt'
 class_id = 2
 
 capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, class_id)

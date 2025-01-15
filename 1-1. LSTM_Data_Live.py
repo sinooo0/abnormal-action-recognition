@@ -20,17 +20,16 @@ def extract_keypoints(results):
     return keypoints_data
 
 # 중복 파일명이 있으면 숫자를 증가시켜 저장
-def get_unique_filename(output_dir, file_name, obj_id):
-    base_name = f"{file_name}_id_{int(obj_id)}"
-    file_path = os.path.join(output_dir, f"{base_name}.csv")
+def get_unique_filename(output_dir, file_name):
+    file_path = os.path.join(output_dir, f"{file_name}_1.csv")
     counter = 2
     while os.path.exists(file_path):
-        file_path = os.path.join(output_dir, f"{file_name}_{counter}_id_{int(obj_id)}.csv")
+        file_path = os.path.join(output_dir, f"{file_name}_{counter}.csv")
         counter += 1
     return file_path
 
 # 실시간 웹캠에서 키포인트 추출 및 CSV 저장
-def process_webcam(yolo_model_path, action_class, file_name, camera_index=0, target_fps=2, max_frames=30):
+def process_webcam(yolo_model_path, action_class, file_name, camera_index=0, target_fps=2, max_frames=30, output_base_dir="./LSTM_Data"):
     model = YOLO(yolo_model_path)
     model.overrides['verbose'] = False  # YOLO 내부 로그 출력 비활성화
     cap = cv2.VideoCapture(camera_index)
@@ -44,8 +43,8 @@ def process_webcam(yolo_model_path, action_class, file_name, camera_index=0, tar
     print(f"웹캠 {camera_index} 시작 | Original FPS: {original_fps}, Target FPS: {target_fps}, Frame Interval: {frame_interval}")
 
     # CSV 저장 경로 설정 (동적으로 폴더 생성)
-    output_dir = f"./LSTM_Data/{action_class}"
-    os.makedirs(output_dir, exist_ok=True)
+    action_dir = os.path.join(output_base_dir, str(action_class))
+    os.makedirs(action_dir, exist_ok=True)
 
     keypoints_data = {}
     saved_ids = set()
@@ -64,13 +63,23 @@ def process_webcam(yolo_model_path, action_class, file_name, camera_index=0, tar
                 keypoints.append(action_class)
                 if obj_id not in keypoints_data:
                     keypoints_data[obj_id] = []
+                
                 keypoints_data[obj_id].append(keypoints)
+
                 if len(keypoints_data[obj_id]) >= max_frames and obj_id not in saved_ids:
-                    output_csv = get_unique_filename(output_dir, file_name, obj_id)
-                    columns = [f"kp_{i}" for i in range(1, 35)] + ["action_class"]
+                    # ID별 폴더 생성
+                    person_dir = os.path.join(action_dir, f"id_{int(obj_id)}")
+                    os.makedirs(person_dir, exist_ok=True)
+
+                    # 파일 저장 경로 설정
+                    output_csv = get_unique_filename(person_dir, file_name)
+
+                    # CSV 헤더 수정: kp0_x, kp0_y, ..., kp16_x, kp16_y, action_class
+                    columns = [f"kp{i}_x" if j % 2 == 0 else f"kp{i}_y" for i in range(17) for j in range(2)] + ["action_class"]
                     df = pd.DataFrame(keypoints_data[obj_id], columns=columns)
                     df.to_csv(output_csv, index=False)
                     print(f"ID {obj_id} 데이터가 {output_csv}에 저장되었습니다.")
+
                     saved_ids.add(obj_id)
                     del keypoints_data[obj_id]
 
@@ -98,10 +107,11 @@ def process_webcam(yolo_model_path, action_class, file_name, camera_index=0, tar
 if __name__ == "__main__":
     yolo_model_path = "./Model/yolo11m-pose.pt"  # YOLO Pose 모델 경로
     target_fps = 3  # 초당 처리할 프레임 수
-    max_frames = 30  # 저장할 최대 프레임 수
+    max_frames = 3  # 저장할 최대 프레임 수
 
-    camera_index = 2 # 사용할 웹캠 번호
-    action_class = 4 # 행동 클래스
-    file_name = "scan" # 저장할 파일 이름 (확장자 제외)
+    camera_index = 0  # 사용할 웹캠 번호
+    action_class = 5  # 행동 클래스
+    file_name = "scan"  # 저장할 파일 이름 (확장자 제외)
+    output_base_dir = "./Data/LSTM_Live"  # 데이터 저장 경로
 
-    process_webcam(yolo_model_path, action_class, file_name, camera_index, target_fps, max_frames)
+    process_webcam(yolo_model_path, action_class, file_name, camera_index, target_fps, max_frames, output_base_dir)

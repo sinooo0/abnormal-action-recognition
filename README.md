@@ -2,7 +2,7 @@
 
 ## 계획
 
-1. 웹캠이나 동영상에서 캡처한 프레임을 YOLO-pose로 처리해 1초당 3프레임의 키포인트 데이터를 수집함
+1. 웹캠이나 동영상에서 캡처한 프레임을 YOLO-pose로 처리해 키포인트 데이터를 수집함
 2. LSTM을 활용해 키포인트 데이터 시퀀스를 기반으로 행동을 예측함
 
 ---
@@ -36,24 +36,19 @@ pip install -r requirements.txt
 ### 1-1. `LSTM_Data_Live.py`
 
 - 웹캠에서 프레임을 캡처한 후 YOLO-pose로 키포인트를 추출해 CSV 파일로 저장
-- CSV 파일은 `LSTM_Data` 폴더 내 각 클래스 번호 폴더에 저장됨
+- py파일 내에서 저장할 시퀀스 길이를 지정함
+- CSV 파일은 `LSTM_Live` 폴더 내 각 클래스 번호 폴더에 ID별로 저장됨
 
-### 1-2. `LSTM_Data_Video.py`
-
-- 동영상에서 프레임을 캡처한 후 YOLO-pose로 키포인트를 추출해 CSV 파일로 저장
-- Video 폴더 내 "Class\_Num. Class\_Name" 형식의 파일에서 동영상을 불러옴
-- CSV 파일은 `LSTM_Data` 폴더 내 각 클래스 번호 폴더에 저장됨
-
-### 1-3. `LSTM_Data_Capture.py`
+### 1-2. `LSTM_Data_Capture.py`
 
 - 동영상에서 프레임을 캡처한 후 YOLO-pose로 키포인트를 추출해 이미지와 각 ID의 CSV 파일로 저장
 - 동영상이 들어있는 폴더 경로 입력 시, 동영상별 폴더를 생성해 이미지와 각 ID의 CSV 파일을 프레임별로 저장함
 
-### 1-4. `LSTM_Data_Delete_Labels.py`
+### 1-3. `LSTM_Data_Delete_Labels.py`
 
 - 이미지와 같은 프레임의 CSV 파일만 남기고 나머지 CSV 파일 삭제
-- `1-3`에서 필요한 이미지만 분류한 후 실행
-- 3프레임 단위로 이미지를 분류해야 학습할 때 문제가 발생하지 않음
+- `1-2`에서 필요한 이미지만 분류한 후 실행
+- 시퀀스 단위로 이미지를 분류해야 학습할 때 문제가 발생하지 않음
 
 ---
 
@@ -79,7 +74,7 @@ pip install -r requirements.txt
 ### 3-1. `LSTM_Test.py`
 
 - YOLO-pose로 다중 객체 탐지 후 ID 및 키포인트 수집
-- 슬라이딩 윈도우 방식으로 시퀀스(3프레임) 구성
+- 슬라이딩 윈도우 방식으로 시퀀스 구성
 - 시퀀스 완성 시 ID별로 LSTM을 통해 행동 예측
 - 이후 프레임 변화마다 실시간 예측을 반복 수행
 - YOLO-pose와 LSTM을 멀티 스레딩으로 분리해 빠른 예측 가능
@@ -116,5 +111,4 @@ pip install -r requirements.txt
 1. Conda 가상환경 생성 및 라이브러리 설치
 2. 데이터 생성 스크립트를 실행해 학습 데이터 준비
 3. LSTM 및 YOLO 모델 학습
-4. 실시간 예측 실행 (`LSTM_Test.py`, `YOLO_Test.py`)
-
+4. 실시간 예측 실행
