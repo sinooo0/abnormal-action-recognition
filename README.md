@@ -12,8 +12,10 @@
 ### 0-1. Conda 가상환경 생성
 
 ```bash
-conda create -n env python=3.12 -y
-conda activate env
+conda create -n action_recognition python=3.12 -y
+```
+```bash
+conda activate action_recognition
 ```
 
 ### 0-2. 의존성 설치
