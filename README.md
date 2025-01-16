@@ -50,12 +50,17 @@ pip install -r requirements.txt
 - `1-2`에서 필요한 이미지만 분류한 후 실행
 - 시퀀스 단위로 이미지를 분류해야 학습할 때 문제가 발생하지 않음
 
-### 1-4. `LSTM_Data_Augmentation.py`
+### 1-4. `Video_Record.py`
 
-- CSV 파일을 읽어 키포인트 데이터 증강 수행
-- 회전 범위 (각도), 스케일 범위 (배율), 이동 범위 (픽셀), 노이즈 강도, x축 & y축 반전(수정 중)
+- 실시간 영상 녹화 후 저장
+- 카메라 번호, 저장경로, 녹화시간(초) 설정 가능
 
-### 1-5. `Keypoint_Visualize.py`
+### 1-5. `Video_Augmentation.py`
+
+- 동영상 증강 후 Augmented_Video 폴더에 저장
+- speed, rotate, flip, scale, translate 조정 가능
+
+### 1-6. `Keypoint_Visualize.py`
 
 - CSV 파일을 읽어 키포인트 시각화
 - 여러 행의 CSV 파일을 읽으면 코드 실행되는 동안 이미지가  순차적으로 변하며, 마지막 이미지가 저장됨
