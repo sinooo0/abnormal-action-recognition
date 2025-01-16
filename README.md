@@ -109,6 +109,7 @@ pip install -r requirements.txt
 | 2      | theft  | 가방 뺏기                |
 | 3      | unbag  | 가방 열기                |
 | 4      | scan   | 두리번거리기               |
+| 5      | weapon rampage   | 흉기난동            |
 
 ---
 
