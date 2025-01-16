@@ -1,118 +1,98 @@
-import numpy as np
-import pandas as pd
-import random
+import cv2
 import os
+import numpy as np
 
-# CSV 파일에서 키포인트 데이터를 불러오는 함수
-def load_keypoint_data(file_path):
-    return pd.read_csv(file_path)
+def get_next_filename(directory, base_name, extension='.mp4'):
+    os.makedirs(directory, exist_ok=True)
+    existing_files = [f for f in os.listdir(directory) if f.startswith(base_name) and f.endswith(extension)]
+    numbers = [int(f[len(base_name):-len(extension)]) for f in existing_files if f[len(base_name):-len(extension)].isdigit()]
+    next_number = max(numbers, default=0) + 1
+    return os.path.join(directory, f"{base_name}{next_number}{extension}")
 
-# 키포인트와 action_class 분리 함수
-def split_keypoints_and_label(data):
-    keypoints = data[:, :-1]  # 마지막 열 제외 (action_class)
-    labels = data[:, -1].astype(int)  # 마지막 열 (action_class), 정수형으로 변환
-    return keypoints, labels
-
-# 회전 증강 함수 (각도: 도 단위)
-def rotate_sequence(sequence, angle):
-    rad = np.deg2rad(angle)
-    cos_angle, sin_angle = np.cos(rad), np.sin(rad)
-    rotated_sequence = []
-    for frame in sequence:
-        keypoints = frame.reshape(-1, 2)
-        rotated = keypoints @ np.array([[cos_angle, -sin_angle], [sin_angle, cos_angle]])
-        rotated_sequence.append(rotated.flatten())
-    return np.array(rotated_sequence)
-
-# 스케일링 증강 함수 (배율)
-def scale_sequence(sequence, scale_factor):
-    scaled_sequence = []
-    for frame in sequence:
-        keypoints = frame.reshape(-1, 2)
-        scaled = keypoints * scale_factor
-        scaled_sequence.append(scaled.flatten())
-    return np.array(scaled_sequence)
-
-# 이동 증강 함수 (픽셀 단위)
-def translate_sequence(sequence, shift_x, shift_y):
-    translated_sequence = []
-    for frame in sequence:
-        keypoints = frame.reshape(-1, 2)
-        translated = keypoints + [shift_x, shift_y]
-        translated_sequence.append(translated.flatten())
-    return np.array(translated_sequence)
-
-# 가우시안 노이즈 추가 함수 (노이즈 강도)
-def add_noise_sequence(sequence, noise_level=2):
-    noisy_sequence = []
-    for frame in sequence:
-        noise = np.random.normal(0, noise_level, frame.shape)
-        noisy = frame + noise
-        noisy_sequence.append(noisy)
-    return np.array(noisy_sequence)
-
-# X축 또는 Y축 기준 반전 함수 (둘 다 가능)
-def flip_sequence(sequence, x_flip=False, y_flip=False):
-    flipped_sequence = []
-    for frame in sequence:
-        keypoints = frame.reshape(-1, 2)
-        if x_flip:
-            keypoints[:, 1] = -keypoints[:, 1]  # X축 기준 반전
-        if y_flip:
-            keypoints[:, 0] = -keypoints[:, 0]  # Y축 기준 반전
-        flipped_sequence.append(keypoints.flatten())
-    return np.array(flipped_sequence)
-
-# 전체 증강 함수 (회전, 스케일링, 이동, 노이즈, 반전)
-def augment_sequence(sequence, angle_range=(-10, 10), scale_range=(0.9, 1.1), shift_range=(-10, 10), noise_level=2, x_flip=False, y_flip=False):
-    angle = random.uniform(*angle_range)  # 회전 범위 (도)
-    scale_factor = random.uniform(*scale_range)  # 스케일 범위 (배율)
-    shift_x, shift_y = random.uniform(*shift_range), random.uniform(*shift_range)  # 이동 범위 (픽셀)
-
-    sequence = rotate_sequence(sequence, angle)
-    sequence = scale_sequence(sequence, scale_factor)
-    sequence = translate_sequence(sequence, shift_x, shift_y)
-    sequence = add_noise_sequence(sequence, noise_level)
-    sequence = flip_sequence(sequence, x_flip, y_flip)
-    return sequence
-
-# 증강 데이터를 저장하는 함수
-def save_augmented_data(augmented_data, labels, original_file, save_dir):
-    os.makedirs(save_dir, exist_ok=True)
-    file_name = os.path.splitext(os.path.basename(original_file))[0]
-    save_path = os.path.join(save_dir, f'{file_name}_Aug.csv')
-    combined_data = np.hstack((augmented_data, labels.reshape(-1, 1)))
-    columns = [f'kp{i}_{axis}' for i in range(17) for axis in ['x', 'y']] + ['action_class']
-    df = pd.DataFrame(combined_data, columns=columns)
-    df['action_class'] = df['action_class'].astype(int)
-    df.to_csv(save_path, index=False)
-
-# 전체 데이터를 증강하고 저장하는 함수
-def process_and_augment(file_path, save_dir, angle_range=(-10, 10), scale_range=(0.9, 1.1), shift_range=(-10, 10), noise_level=2, x_flip=False, y_flip=False):
-    data = load_keypoint_data(file_path).values
-    if len(data) == 0:
-        print(f"{file_path} 파일은 데이터가 없습니다.")
+def augment_video(video_path, save_dir, speed=1.0, rotate=0, flip_horizontal=False, flip_vertical=False, resize_scale=1.0, translate_x=0, translate_y=0):
+    cap = cv2.VideoCapture(video_path)
+    
+    if not cap.isOpened():
+        print(f"비디오 파일을 열 수 없습니다: {video_path}")
         return
-    keypoints, labels = split_keypoints_and_label(data)
-    augmented_keypoints = augment_sequence(keypoints, angle_range, scale_range, shift_range, noise_level, x_flip, y_flip)
-    save_augmented_data(augmented_keypoints, labels, file_path, save_dir)
+    
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * resize_scale)
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) * resize_scale)
+    fps = cap.get(cv2.CAP_PROP_FPS) * speed
 
-# 모든 CSV 파일을 탐색하고 증강하는 함수
-def augment_all_csv_in_directory(root_dir, save_dir, angle_range=(-10, 10), scale_range=(0.9, 1.1), shift_range=(-10, 10), noise_level=2, x_flip=False, y_flip=False):
+    base_name = os.path.basename(video_path).split('.')[0]
+    save_path = get_next_filename(save_dir, base_name)
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(save_path, fourcc, fps, (frame_width, frame_height))
+
+    print(f"비디오 증강 및 저장 중: {save_path}")
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Resize
+        frame = cv2.resize(frame, (frame_width, frame_height))
+        
+        # Rotate
+        if rotate != 0:
+            center = (frame_width // 2, frame_height // 2)
+            rot_matrix = cv2.getRotationMatrix2D(center, rotate, 1.0)
+            frame = cv2.warpAffine(frame, rot_matrix, (frame_width, frame_height))
+        
+        # Flip
+        if flip_horizontal:
+            frame = cv2.flip(frame, 1)
+        if flip_vertical:
+            frame = cv2.flip(frame, 0)
+        
+        # Translate
+        if translate_x != 0 or translate_y != 0:
+            trans_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
+            frame = cv2.warpAffine(frame, trans_matrix, (frame_width, frame_height))
+
+        out.write(frame)
+        
+        cv2.imshow('Augmented Video', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+    print(f"비디오 증강 완료. 저장 경로: {save_path}")
+
+def process_all_videos(root_dir, save_root_dir, speed=1.0, rotate=0, flip_horizontal=False, flip_vertical=False, resize_scale=1.0, translate_x=0, translate_y=0):
     for subdir, _, files in os.walk(root_dir):
         for file in files:
-            if file.endswith('.csv'):
-                file_path = os.path.join(subdir, file)
-                process_and_augment(file_path, save_dir, angle_range, scale_range, shift_range, noise_level, x_flip, y_flip)
+            if file.endswith('.mp4'):
+                video_path = os.path.join(subdir, file)
+                relative_path = os.path.relpath(subdir, root_dir)
+                save_dir = os.path.join(save_root_dir, relative_path)
+                augment_video(video_path, save_dir, speed, rotate, flip_horizontal, flip_vertical, resize_scale, translate_x, translate_y)
+
+# 파라미터 설정
+root_video_dir = './Video'
+save_root_dir = './Augmented_Video'
+speed = 1.0  # 속도 배율
+rotate = 15  # 회전 각도
+flip_horizontal = False  # 가로 뒤집기
+flip_vertical = False  # 세로 뒤집기
+resize_scale = 1.0  # 크기 조정 배율
+translate_x = 0  # X축 이동
+translate_y = 0  # Y축 이동
 
 # 실행
-file_path = './Data/LSTM_Capture'
-save_dir = './Data/LSTM_Augmentation'
-angle_range = (-15, 15)  # 회전 범위 (각도)
-scale_range = (0.8, 1.2)  # 스케일 범위 (배율)
-shift_range = (-15, 15)  # 이동 범위 (픽셀)
-noise_level = 3  # 노이즈 강도
-x_flip = False  # X축 기준 반전 여부
-y_flip = False  # Y축 기준 반전 여부
-
-augment_all_csv_in_directory(file_path, save_dir, angle_range, scale_range, shift_range, noise_level, x_flip, y_flip)
+process_all_videos(
+    root_video_dir, 
+    save_root_dir, 
+    speed, 
+    rotate, 
+    flip_horizontal, 
+    flip_vertical, 
+    resize_scale, 
+    translate_x, 
+    translate_y
+)
