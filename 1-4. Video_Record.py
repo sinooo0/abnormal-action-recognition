@@ -19,7 +19,7 @@ def record_video(camera_index=0, save_dir='videos', duration=10):
     # 비디오 프레임 설정
     frame_width = int(cap.get(3))
     frame_height = int(cap.get(4))
-    fps = 20.0
+    fps = 30.0
 
     # 저장 파일명 생성
     save_path = get_next_filename(save_dir)
@@ -53,7 +53,7 @@ def record_video(camera_index=0, save_dir='videos', duration=10):
     print(f"녹화 완료. 파일이 저장되었습니다: {save_path}")
 
 # 실행
-camera_index = 0
-save_path = './Video/2. theft'
-duration = 5
+camera_index = 0 # 카메라 번호 설정
+save_path = './Video/2. theft' # 저장 경로 설정
+duration = 5 # 녹화 시간(초) 설정
 record_video(camera_index, save_path, duration)
