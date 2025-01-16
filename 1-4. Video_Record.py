@@ -9,7 +9,7 @@ def get_next_filename(directory, extension='.mp4'):
     next_number = max(numbers, default=0) + 1
     return os.path.join(directory, f"{base_name}{next_number}{extension}")
 
-def record_video(camera_index=0, save_dir='videos', duration=10):
+def record_video(camera_index, save_dir, duration):
     cap = cv2.VideoCapture(camera_index)
     
     if not cap.isOpened():
