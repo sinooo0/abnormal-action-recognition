@@ -55,13 +55,21 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, fp
                     frame_filename = os.path.join(image_dir, f"{video_name}_{saved_count}.png")
                     cv2.imwrite(frame_filename, annotated_frame)
 
-                    if results[0].keypoints:
+                    if results[0].keypoints and results[0].boxes:  # Ensure both keypoints and boxes are available
                         keypoints = results[0].keypoints.xy.cpu().numpy()
+                        boxes = results[0].boxes.xywh.cpu().numpy()  # Bounding boxes in [x_center, y_center, width, height]
                         ids = results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else range(len(keypoints))
 
-                        for person_id, person_keypoints in zip(ids, keypoints):
-                            flat_keypoints = person_keypoints.flatten().tolist()[:34]
-                            flat_keypoints += [class_id]
+                        for person_id, person_keypoints, box in zip(ids, keypoints, boxes):
+                            box_x, box_y, box_w, box_h = box
+                            relative_keypoints = []
+
+                            for i in range(17):
+                                kp_x = (person_keypoints[i, 0] - (box_x - box_w / 2)) / box_w  # Normalize x relative to box
+                                kp_y = (person_keypoints[i, 1] - (box_y - box_h / 2)) / box_h  # Normalize y relative to box
+                                relative_keypoints.extend([kp_x, kp_y])
+
+                            relative_keypoints.append(class_id)
 
                             person_label_dir = os.path.join(label_dir, f"id_{int(person_id)}")
                             os.makedirs(person_label_dir, exist_ok=True)
@@ -71,7 +79,7 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, fp
                                 writer = csv.writer(file)
                                 headers = [f'kp{i}_x' if j % 2 == 0 else f'kp{i}_y' for i in range(17) for j in range(2)] + ['action_class']
                                 writer.writerow(headers)
-                                writer.writerow(flat_keypoints)
+                                writer.writerow(relative_keypoints)
 
                     saved_count += 1
 
@@ -83,6 +91,6 @@ def capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path, fp
 # 실행
 video_dir = './Video/'
 output_dir = './Data/LSTM_Capture'
-model_path = './Model/yolo11m-pose.pt'
+model_path = './Model/yolo11s-pose.pt'
 
 capture_yolo_pose_frames_with_tracking(video_dir, output_dir, model_path)
