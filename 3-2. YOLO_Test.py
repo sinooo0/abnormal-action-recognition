@@ -5,7 +5,7 @@ import pandas as pd
 from ultralytics import YOLO
 
 # 모델 경로 정의
-MODEL_PATHS = ["./Model/yolo11m-pose.pt"]
+MODEL_PATHS = ["./Model/yolo11s-pose.pt"]
 VIDEO_SOURCE = 0  # 웹캠 사용
 
 # 원하는 최대 프레임 크기
