@@ -59,12 +59,7 @@ pip install -r requirements.txt
 - 동영상 증강 후 Augmented_Video 폴더에 저장
 - speed, rotate, flip, scale, translate 조정 가능
 
-### 1-6. `Keypoint_Visualize.py`
-
-- CSV 파일을 읽어 키포인트 시각화
-- 여러 행의 CSV 파일을 읽으면 코드 실행되는 동안 이미지가  순차적으로 변하며, 마지막 이미지가 저장됨
-
-### 1-7. `Rename.py`
+### 1-6. `Rename.py`
 
 - 폴더 경로 안의 파일들 이름 통일
 - {파일명}_{번호} 형식으로 오름차순 저장
