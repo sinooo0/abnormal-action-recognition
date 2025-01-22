@@ -91,7 +91,7 @@ def process_video_or_webcam(yolo_model_path, lstm_model_path, seq_length, target
                     box = previous_boxes[obj_id]
                     x1, y1, x2, y2 = map(int, box)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    action_label = action_labels.get(previous_actions.get(obj_id), "Walk")
+                    action_label = action_labels.get(previous_actions.get(obj_id), "Normal")
                     accuracy = previous_accuracies.get(obj_id, 0.0)
                     label_text = f"ID {obj_id}: {action_label} ({accuracy:.1f}%)"
                     cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
@@ -111,7 +111,7 @@ def process_video_or_webcam(yolo_model_path, lstm_model_path, seq_length, target
             last_seen[obj_id] = current_time  # 마지막 감지 시간 갱신
 
             # 행동 정보 표시
-            action_label = action_labels.get(previous_actions.get(obj_id), "Walk")
+            action_label = action_labels.get(previous_actions.get(obj_id), "Normal")
             accuracy = previous_accuracies.get(obj_id, 0.0)
             label_text = f"ID {obj_id}: {action_label} ({accuracy:.1f}%)"
             cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
