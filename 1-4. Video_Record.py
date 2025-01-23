@@ -53,7 +53,7 @@ def record_video(camera_index, save_dir, duration):
     print(f"녹화 완료. 파일이 저장되었습니다: {save_path}")
 
 # 실행
-camera_index = 0 # 카메라 번호 설정
-save_path = './Video/2. theft' # 저장 경로 설정
+camera_index = 1 # 카메라 번호 설정
+save_path = './Video/1. doubt' # 저장 경로 설정
 duration = 5 # 녹화 시간(초) 설정
 record_video(camera_index, save_path, duration)

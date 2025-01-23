@@ -31,6 +31,6 @@ def rename_files_in_folder(folder_path, name_variable):
 
 # 실행
 rename_files_in_folder(
-    folder_path="./Video/1. fight",
-    name_variable="fight"
+    folder_path="./Video/2. danger",
+    name_variable="danger"
 )
