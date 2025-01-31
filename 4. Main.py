@@ -48,20 +48,20 @@ def detect_weapons(yolo_weapon, frame, detected_weapons_lock, detected_weapons):
             detected_weapons.append((tuple(map(int, box)), int(cls), float(conf) * 100))
 
 # YOLO Pose + LSTM 행동 인식 & YOLO 흉기 탐지 통합 실행
-def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, seq_length, target_fps=5, weapon_fps_multiplier=3, video_path=None, camera_index=0):
+def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, seq_length, target_fps=3, weapon_fps_multiplier=15, video_path=None, camera_index=0):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     yolo_pose = YOLO(yolo_pose_path).to(device)
     yolo_weapon = YOLO(yolo_weapon_path).to(device)
     lstm_model = load_model(lstm_model_path, compile=False)
 
-    weapon_class_names = yolo_weapon.model.names  # YOLO 모델의 클래스(어노테이션) 가져오기
+    weapon_class_names = yolo_weapon.model.names
 
     object_sequences = {}
     previous_actions = {}
     previous_accuracies = {}
     
     detected_weapons = []
-    detected_weapons_lock = threading.Lock()  # 동기화 객체 추가
+    detected_weapons_lock = threading.Lock()
 
     cap = cv2.VideoCapture(camera_index) if video_path is None else cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -69,8 +69,8 @@ def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, s
         return
 
     original_fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    frame_interval = int(original_fps / target_fps)  # YOLO Pose 실행 간격
-    weapon_frame_interval = max(1, frame_interval // weapon_fps_multiplier)  # YOLO Object Detection 실행 간격 증가
+    frame_interval = int(original_fps / target_fps)
+    weapon_frame_interval = max(1, frame_interval // weapon_fps_multiplier)
     frame_idx = 0
 
     weapon_thread = None  # 흉기 탐지 스레드
@@ -83,7 +83,7 @@ def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, s
 
         frame = resize_frame(frame)
 
-        # YOLO Pose 실행 (행동 인식은 기존 속도 유지)
+        # YOLO Pose
         if frame_idx % frame_interval == 0:
             with torch.cuda.amp.autocast():
                 results = yolo_pose.track(frame, persist=True, verbose=False)
@@ -97,13 +97,13 @@ def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, s
                 if len(object_sequences[obj_id]) == seq_length:
                     threading.Thread(target=predict_action, args=(obj_id, object_sequences[obj_id], lstm_model, seq_length, previous_actions, previous_accuracies)).start()
 
-        # YOLO Object Detection 실행 (흉기 탐지는 더 자주 실행)
+        # YOLO Object Detection
         if frame_idx % weapon_frame_interval == 0:
             if weapon_thread is None or not weapon_thread.is_alive():
                 weapon_thread = threading.Thread(target=detect_weapons, args=(yolo_weapon, frame, detected_weapons_lock, detected_weapons))
                 weapon_thread.start()
 
-        # 행동 인식 결과 그리기 (하늘색 박스)
+        # 행동 인식 결과
         for obj_id, box in zip(results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else [], results[0].boxes.xyxy.cpu().numpy()):
             x1, y1, x2, y2 = map(int, box)
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
@@ -115,18 +115,16 @@ def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, s
             cv2.rectangle(frame, (x1, y1 - 20), (x1 + len(label_text) * 10, y1), (255, 200, 0), -1)
             cv2.putText(frame, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-        # 흉기 탐지 결과 그리기 (파란색 박스 + 정확도 + 배경 추가)
+        # 흉기 탐지 결과
         with detected_weapons_lock:
             for (x1, y1, x2, y2), cls_id, conf in detected_weapons:
-                label = f"{weapon_class_names.get(cls_id, 'Unknown')} ({conf:.1f}%)"  # 정확도 추가
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)  # 파란색 박스
+                label = f"{weapon_class_names.get(cls_id, 'Unknown')} ({conf:.1f}%)"
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-                # 텍스트 배경 추가 (파란색)
                 text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
                 text_x, text_y = x1, y1 - 10
                 cv2.rectangle(frame, (text_x, text_y - text_size[1] - 4), (text_x + text_size[0], text_y + 4), (255, 0, 0), -1)
 
-                # 텍스트 추가 (흰색)
                 cv2.putText(frame, label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         cv2.imshow("YOLO Pose + LSTM Action Recognition + YOLO Weapon Detection", frame)
