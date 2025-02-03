@@ -97,6 +97,10 @@ pip install -r requirements.txt
 
 - 실시간으로 다중 YOLO 모델 예측 가능
 
+### 4. `Main.py`
+
+- LSTM과 YOLO 모델 결합하여 한 화면에 두개의 예측 동시 수행
+
 ---
 
 ## 클래스 분류

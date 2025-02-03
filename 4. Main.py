@@ -4,10 +4,12 @@ import torch
 from ultralytics import YOLO
 from tensorflow.keras.models import load_model
 from collections import deque
-import threading
-import time
+from concurrent.futures import ThreadPoolExecutor
 
-# YOLO Pose 결과에서 키포인트를 추출하는 함수
+# 🔹 행동 라벨 (LSTM)
+action_labels = {0: "Normal", 1: "Doubt", 2: "Danger"}
+
+# 🔹 YOLO Pose 키포인트 추출
 def extract_keypoints(results):
     keypoints_data = []
     if results[0].keypoints is not None and results[0].boxes is not None:
@@ -17,39 +19,30 @@ def extract_keypoints(results):
 
         for kp, box, obj_id in zip(keypoints, boxes, ids):
             box_x, box_y, box_w, box_h = box
-            relative_keypoints = [(kp[i, 0] - (box_x - box_w / 2)) / box_w for i in range(17)] + \
-                                 [(kp[i, 1] - (box_y - box_h / 2)) / box_h for i in range(17)]
-            keypoints_data.append((obj_id, relative_keypoints))
+            relative_keypoints = np.concatenate([(kp[:, 0] - (box_x - box_w / 2)) / box_w, 
+                                                 (kp[:, 1] - (box_y - box_h / 2)) / box_h])
+            keypoints_data.append((obj_id, relative_keypoints.astype(np.float32)))
     return keypoints_data
 
-# 프레임 크기 조정 함수
-def resize_frame(frame, max_width=640, max_height=480):
-    height, width = frame.shape[:2]
-    scale = min(max_width / width, max_height / height)
-    return cv2.resize(frame, (int(width * scale), int(height * scale)))
-
-# 행동 라벨
-action_labels = {0: "Normal", 1: "Doubt", 2: "Danger"}
-
-# LSTM 행동 예측 (멀티스레딩)
+# 🔹 LSTM 행동 예측
 def predict_action(obj_id, sequence, lstm_model, seq_length, previous_actions, previous_accuracies):
-    input_data = np.array(sequence).reshape(1, seq_length, -1)
+    input_data = np.array(sequence, dtype=np.float32).reshape(1, seq_length, -1)
     prediction = lstm_model.predict(input_data, verbose=0)
-    previous_actions[obj_id] = np.argmax(prediction)
+    previous_actions[obj_id] = int(np.argmax(prediction))
     previous_accuracies[obj_id] = float(np.max(prediction)) * 100
 
-# YOLO Object Detection (흉기 탐지) - 멀티스레딩 적용
-def detect_weapons(yolo_weapon, frame, detected_weapons_lock, detected_weapons):
-    with torch.cuda.amp.autocast():
+# 🔹 YOLO Object Detection (흉기 탐지)
+def detect_weapons(yolo_weapon, frame, detected_weapons):
+    with torch.no_grad():
         results = yolo_weapon(frame, verbose=False)
-    with detected_weapons_lock:
-        detected_weapons.clear()
-        for box, cls, conf in zip(results[0].boxes.xyxy.cpu().numpy(), results[0].boxes.cls.cpu().numpy(), results[0].boxes.conf.cpu().numpy()):
-            detected_weapons.append((tuple(map(int, box)), int(cls), float(conf) * 100))
+    detected_weapons.clear()
+    for box, cls, conf in zip(results[0].boxes.xyxy.cpu().numpy(), results[0].boxes.cls.cpu().numpy(), results[0].boxes.conf.cpu().numpy()):
+        detected_weapons.append((tuple(map(int, box)), int(cls), float(conf) * 100))
 
-# YOLO Pose + LSTM 행동 인식 & YOLO 흉기 탐지 통합 실행
-def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, seq_length, target_fps=3, weapon_fps_multiplier=15, video_path=None, camera_index=0):
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# 🔹 메인 실행 함수 (YOLO Pose + LSTM + YOLO Weapon Detection)
+def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, seq_length, target_fps=5, video_path=None, camera_index=0):
+    device = 'cpu'
+    torch.set_num_threads(4)
     yolo_pose = YOLO(yolo_pose_path).to(device)
     yolo_weapon = YOLO(yolo_weapon_path).to(device)
     lstm_model = load_model(lstm_model_path, compile=False)
@@ -59,64 +52,56 @@ def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, s
     object_sequences = {}
     previous_actions = {}
     previous_accuracies = {}
-    
     detected_weapons = []
-    detected_weapons_lock = threading.Lock()
 
     cap = cv2.VideoCapture(camera_index) if video_path is None else cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"Error: Unable to access {'webcam' if video_path is None else video_path}.")
         return
 
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
     original_fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    frame_interval = int(original_fps / target_fps)
-    weapon_frame_interval = max(1, frame_interval // weapon_fps_multiplier)
+    frame_interval = max(1, int(original_fps / target_fps))
     frame_idx = 0
 
-    weapon_thread = None  # 흉기 탐지 스레드
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Failed to read frame.")
+                break
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Error: Failed to read frame.")
-            break
+            # 🔹 YOLO Pose 추적
+            if frame_idx % frame_interval == 0:
+                with torch.no_grad():
+                    results = yolo_pose.track(frame, persist=True, verbose=False)
+                keypoints_data = extract_keypoints(results)
 
-        frame = resize_frame(frame)
+                for obj_id, keypoints in keypoints_data:
+                    if obj_id not in object_sequences:
+                        object_sequences[obj_id] = deque(maxlen=seq_length)
+                    object_sequences[obj_id].append(keypoints)
 
-        # YOLO Pose
-        if frame_idx % frame_interval == 0:
-            with torch.cuda.amp.autocast():
-                results = yolo_pose.track(frame, persist=True, verbose=False)
-            keypoints_data = extract_keypoints(results)
+                    if len(object_sequences[obj_id]) == seq_length:
+                        executor.submit(predict_action, obj_id, list(object_sequences[obj_id]), lstm_model, seq_length, previous_actions, previous_accuracies)
 
-            for obj_id, keypoints in keypoints_data:
-                if obj_id not in object_sequences:
-                    object_sequences[obj_id] = deque(maxlen=seq_length)
-                object_sequences[obj_id].append(keypoints)
+            # 🔹 YOLO Object Detection (흉기 탐지)
+            if frame_idx % (frame_interval * 3) == 0:
+                executor.submit(detect_weapons, yolo_weapon, frame, detected_weapons)
 
-                if len(object_sequences[obj_id]) == seq_length:
-                    threading.Thread(target=predict_action, args=(obj_id, object_sequences[obj_id], lstm_model, seq_length, previous_actions, previous_accuracies)).start()
+            # 🔹 행동 인식 결과 (클래스명 + 신뢰도 출력)
+            for obj_id, box in zip(results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else [], results[0].boxes.xyxy.cpu().numpy()):
+                x1, y1, x2, y2 = map(int, box)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
 
-        # YOLO Object Detection
-        if frame_idx % weapon_frame_interval == 0:
-            if weapon_thread is None or not weapon_thread.is_alive():
-                weapon_thread = threading.Thread(target=detect_weapons, args=(yolo_weapon, frame, detected_weapons_lock, detected_weapons))
-                weapon_thread.start()
+                action_label = action_labels.get(previous_actions.get(obj_id, 0), "Normal")
+                accuracy = previous_accuracies.get(obj_id, 0.0)
+                label_text = f"ID {obj_id}: {action_label} ({accuracy:.1f}%)"
 
-        # 행동 인식 결과
-        for obj_id, box in zip(results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else [], results[0].boxes.xyxy.cpu().numpy()):
-            x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
+                cv2.rectangle(frame, (x1, y1 - 20), (x1 + len(label_text) * 10, y1), (255, 200, 0), -1)
+                cv2.putText(frame, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-            action_label = action_labels.get(previous_actions.get(obj_id), "Normal")
-            accuracy = previous_accuracies.get(obj_id, 0.0)
-            label_text = f"ID {obj_id}: {action_label} ({accuracy:.1f}%)"
-
-            cv2.rectangle(frame, (x1, y1 - 20), (x1 + len(label_text) * 10, y1), (255, 200, 0), -1)
-            cv2.putText(frame, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-
-        # 흉기 탐지 결과
-        with detected_weapons_lock:
+            # 🔹 흉기 탐지 결과 (클래스명 + 신뢰도 출력)
             for (x1, y1, x2, y2), cls_id, conf in detected_weapons:
                 label = f"{weapon_class_names.get(cls_id, 'Unknown')} ({conf:.1f}%)"
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
@@ -124,27 +109,26 @@ def process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, s
                 text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
                 text_x, text_y = x1, y1 - 10
                 cv2.rectangle(frame, (text_x, text_y - text_size[1] - 4), (text_x + text_size[0], text_y + 4), (255, 0, 0), -1)
-
                 cv2.putText(frame, label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-        cv2.imshow("YOLO Pose + LSTM Action Recognition + YOLO Weapon Detection", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            cv2.imshow("YOLO Pose + LSTM Action Recognition + YOLO Weapon Detection", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
-        frame_idx += 1
+            frame_idx += 1
 
     cap.release()
     cv2.destroyAllWindows()
     print("Processing stopped.")
 
+
 if __name__ == "__main__":
     yolo_pose_path = "./Model/yolo11s-pose.pt"
-    yolo_weapon_path = "./Model/yolo-weapon.pt"
+    yolo_weapon_path = "./Model/yolo11n-weapon.pt"
     lstm_model_path = "./Model/LSTM.h5"
     seq_length = 3
     target_fps = 5
-    weapon_fps_multiplier = 15
     video_path = None
     camera_index = 0
 
-    process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, seq_length, target_fps, weapon_fps_multiplier, video_path, camera_index)
+    process_video_or_webcam(yolo_pose_path, yolo_weapon_path, lstm_model_path, seq_length, target_fps, video_path, camera_index)

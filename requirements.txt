@@ -7,3 +7,5 @@ keras
 scikit-learn
 roboflow
 lap
+fastapi
+uvicorn
