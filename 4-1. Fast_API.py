@@ -14,6 +14,10 @@ import tensorflow as tf
 
 app = FastAPI()
 
+
+LSTM_SEQ_LENGTH = 6 # LSTM 시퀀스 수
+YOLO_PROCESS_FPS = 6 # 초당 YOLO Pose 프레임 수
+
 # TensorFlow GPU 메모리 증가 설정
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
@@ -77,8 +81,8 @@ def extract_keypoints(results):
     return keypoints_data
 
 def predict_action(obj_id, sequence):
-    # LSTM 모델로 행동 예측
-    input_data = np.array(sequence, dtype=np.float32).reshape(1, 3, -1)
+    # LSTM 모델로 행동 예측 (입력 데이터의 shape: (1, LSTM_SEQ_LENGTH, -1))
+    input_data = np.array(sequence, dtype=np.float32).reshape(1, LSTM_SEQ_LENGTH, -1)
     prediction = lstm_model.predict(input_data, verbose=0)
     previous_actions[obj_id] = int(np.argmax(prediction))
     previous_accuracies[obj_id] = float(np.max(prediction)) * 100
@@ -86,7 +90,6 @@ def predict_action(obj_id, sequence):
 def detect_weapons(frame):
     # YOLO Weapon 모델로 무기 탐지
     with torch.no_grad():
-        # 모델이 GPU에 있으므로 입력 이미지가 CPU에 있더라도 내부적으로 처리됨
         results = yolo_weapon(frame, verbose=False)
     detected_weapons.clear()
     for box, cls, conf in zip(results[0].boxes.xyxy.cpu().numpy(),
@@ -97,8 +100,7 @@ def detect_weapons(frame):
 def process_video():
     # 프레임을 처리하여 결과를 영상에 표시하고 MJPEG 스트림 생성
     global latest_frame
-    frame_interval = 3
-    frame_idx = 0
+    last_yolo_time = 0  # YOLO 처리를 마지막으로 실행한 시간
     executor = ThreadPoolExecutor(max_workers=3)
     results = None  # YOLO Pose 결과 저장
     while True:
@@ -107,18 +109,22 @@ def process_video():
                 continue
             frame = latest_frame.copy()
 
-        if frame_idx % frame_interval == 0:
+        current_time = time.time()
+        # 1초당 YOLO_PROCESS_FPS 만큼 프레임 처리하도록 타이머 기반 조건 사용
+        if current_time - last_yolo_time >= 1.0 / YOLO_PROCESS_FPS:
+            last_yolo_time = current_time
             with torch.no_grad():
                 results = yolo_pose.track(frame, persist=True, verbose=False)
             keypoints_data = extract_keypoints(results)
             for obj_id, keypoints in keypoints_data:
                 if obj_id not in object_sequences:
-                    object_sequences[obj_id] = deque(maxlen=3)
+                    object_sequences[obj_id] = deque(maxlen=LSTM_SEQ_LENGTH)
                 object_sequences[obj_id].append(keypoints)
-                if len(object_sequences[obj_id]) == 3:
+                if len(object_sequences[obj_id]) == LSTM_SEQ_LENGTH:
                     executor.submit(predict_action, obj_id, list(object_sequences[obj_id]))
             executor.submit(detect_weapons, frame)
 
+        # 결과가 있다면 영상에 바운딩 박스와 라벨 표시
         if results is not None and results[0].boxes is not None:
             boxes = results[0].boxes.xyxy.cpu().numpy()
             ids = results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else range(len(boxes))
@@ -136,7 +142,6 @@ def process_video():
         frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        frame_idx += 1
 
 @app.get("/predict/")
 def predict():
