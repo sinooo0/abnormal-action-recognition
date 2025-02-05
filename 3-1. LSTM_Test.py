@@ -122,7 +122,7 @@ if __name__ == "__main__":
     lstm_model_path = "./Model/LSTM.h5"
     seq_length = 3
     target_fps = 3
-    video_path = None
+    video_path = "rtsp://192.168.56.1:8554/visual"
     camera_index = 0
 
     process_video_or_webcam(yolo_model_path, lstm_model_path, seq_length, target_fps, video_path, camera_index)
