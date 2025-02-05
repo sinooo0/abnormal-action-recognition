@@ -15,8 +15,8 @@ import tensorflow as tf
 app = FastAPI()
 
 
-LSTM_SEQ_LENGTH = 6 # LSTM 시퀀스 수
-YOLO_PROCESS_FPS = 6 # 초당 YOLO Pose 프레임 수
+LSTM_SEQ_LENGTH = 3 # LSTM 시퀀스 수
+YOLO_PROCESS_FPS = 3 # 초당 YOLO Pose 프레임 수
 
 # TensorFlow GPU 메모리 증가 설정
 gpus = tf.config.list_physical_devices('GPU')
@@ -81,7 +81,7 @@ def extract_keypoints(results):
     return keypoints_data
 
 def predict_action(obj_id, sequence):
-    # LSTM 모델로 행동 예측 (입력 데이터의 shape: (1, LSTM_SEQ_LENGTH, -1))
+    # LSTM 모델로 행동 예측
     input_data = np.array(sequence, dtype=np.float32).reshape(1, LSTM_SEQ_LENGTH, -1)
     prediction = lstm_model.predict(input_data, verbose=0)
     previous_actions[obj_id] = int(np.argmax(prediction))
