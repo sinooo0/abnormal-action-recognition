@@ -16,7 +16,7 @@ app = FastAPI()
 
 
 LSTM_SEQ_LENGTH = 3 # LSTM 시퀀스 수
-YOLO_PROCESS_FPS = 3 # 초당 YOLO Pose 프레임 수
+YOLO_PROCESS_FPS = 3 # 초당 YOLO 프레임 수
 
 # TensorFlow GPU 메모리 증가 설정
 gpus = tf.config.list_physical_devices('GPU')
@@ -110,7 +110,6 @@ def process_video():
             frame = latest_frame.copy()
 
         current_time = time.time()
-        # 1초당 YOLO_PROCESS_FPS 만큼 프레임 처리하도록 타이머 기반 조건 사용
         if current_time - last_yolo_time >= 1.0 / YOLO_PROCESS_FPS:
             last_yolo_time = current_time
             with torch.no_grad():
@@ -128,15 +127,29 @@ def process_video():
         if results is not None and results[0].boxes is not None:
             boxes = results[0].boxes.xyxy.cpu().numpy()
             ids = results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else range(len(boxes))
+            
+            # 행동 인식 결과
             for obj_id, box in zip(ids, boxes):
                 x1, y1, x2, y2 = map(int, box)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
+                
                 action_label = action_labels.get(previous_actions.get(obj_id, 0), "Normal")
                 accuracy = previous_accuracies.get(obj_id, 0.0)
                 label_text = f"ID {obj_id}: {action_label} ({accuracy:.1f}%)"
+                
                 cv2.rectangle(frame, (x1, y1 - 20), (x1 + len(label_text) * 10, y1), (255, 200, 0), -1)
                 cv2.putText(frame, label_text, (x1, y1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        
+        # 무기 탐지 결과
+        for (x1, y1, x2, y2), cls, conf in detected_weapons:
+            weapon_label = f"{weapon_class_names[cls]} ({conf:.1f}%)"
+            
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            text_size = cv2.getTextSize(weapon_label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+            text_x, text_y = x1, y1 - 10
+            cv2.rectangle(frame, (text_x, text_y - text_size[1] - 4), (text_x + text_size[0], text_y + 4), (255, 0, 0), -1)
+            cv2.putText(frame, weapon_label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         _, buffer = cv2.imencode(".jpg", frame)
         frame_bytes = buffer.tobytes()
