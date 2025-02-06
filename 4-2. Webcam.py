@@ -4,19 +4,19 @@ import threading
 import time
 
 # 서버 URL 및 세션 생성
-server_url = "http://localhost:8000/webcam"
+server_url = "https://crime-detect.run.goorm.site/webcam"
 session = requests.Session()
 
 def send_frame(frame):
-    ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])  # 품질 70%로 압축
+    ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
     if not ret:
         return
     files = {"file": ("frame.jpg", buffer.tobytes(), "image/jpeg")}
     try:
         response = session.post(server_url, files=files, timeout=0.5)
-        print(response.json())
     except Exception as e:
         print("Error sending frame:", e)
+
 
 def main():
     cap = cv2.VideoCapture(0)

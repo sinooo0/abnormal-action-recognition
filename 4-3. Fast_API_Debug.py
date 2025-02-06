@@ -34,7 +34,7 @@ print(f"Using device: {device}")
 # 모델 로드 (YOLO Pose, YOLO Weapon, LSTM)
 yolo_pose = YOLO("./Model/yolo11s-pose.pt").to(device)
 yolo_weapon = YOLO("./Model/yolo11m-weapon.pt").to(device)
-lstm_model = load_model("./Model/LSTM_GPU.h5", compile=False)
+lstm_model = load_model("./Model/LSTM2.h5", compile=False)
 weapon_class_names = yolo_weapon.model.names
 
 # 행동 라벨
@@ -120,12 +120,22 @@ def process_video():
             valid_keypoints = count_valid_keypoints(keypoints_data)
 
             for obj_id, keypoints in keypoints_data:
-                if valid_keypoints.get(obj_id, 0) >= 26:  # 유효한 키포인트 개수 검사
+                if keypoints is None or len(keypoints) == 0:
+                    print(f"[WARNING] obj_id {obj_id}에서 빈 키포인트가 감지됨. 무시함.")
+                    continue
+
+                if valid_keypoints.get(obj_id, 0) >= 26:
                     if obj_id not in object_sequences:
+                        print(f"[INIT] obj_id {obj_id}의 시퀀스가 새로 생성됨.")
                         object_sequences[obj_id] = deque(maxlen=LSTM_SEQ_LENGTH)
+
                     object_sequences[obj_id].append(keypoints)
+
                     if len(object_sequences[obj_id]) == LSTM_SEQ_LENGTH:
+                        print(f"[PREDICT] obj_id {obj_id}의 시퀀스가 충분하여 예측 수행.")
                         executor.submit(predict_action, obj_id, list(object_sequences[obj_id]))
+                    else:
+                        print(f"[WAIT] obj_id {obj_id}의 시퀀스 길이 부족 ({len(object_sequences[obj_id])}/{LSTM_SEQ_LENGTH})")
 
             executor.submit(detect_weapons, frame)
 
