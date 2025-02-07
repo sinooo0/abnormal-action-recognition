@@ -10,6 +10,9 @@ session = requests.Session()
 last_timestamp = time.time()
 error_occurred = False
 
+# 카메라 설정
+camera_type = 1
+
 def send_frame(frame):
     global last_timestamp, error_occurred
     ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -30,7 +33,7 @@ def send_frame(frame):
             error_occurred = True
 
 def main():
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(camera_type)
     if not cap.isOpened():
         print("웹캠을 열 수 없습니다.")
         return

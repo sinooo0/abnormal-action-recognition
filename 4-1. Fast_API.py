@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 import tensorflow as tf
+from queue import Queue
 
 app = FastAPI()
 
@@ -32,7 +33,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 # 모델 로드 (YOLO Pose, YOLO Weapon, LSTM)
-yolo_pose = YOLO("./Model/yolo11s-pose.pt").to(device)
+yolo_pose = YOLO("./Model/yolo11l-pose.pt").to(device)
 yolo_weapon = YOLO("./Model/yolo11m-weapon.pt").to(device)
 lstm_model = load_model("./Model/LSTM_GPU.h5", compile=False)
 weapon_class_names = yolo_weapon.model.names
@@ -47,20 +48,33 @@ previous_accuracies = {}
 detected_weapons = []
 
 # 프레임 저장 및 스레드 동기화
-latest_frame = None
-lock = threading.Lock()
+frame_queue = Queue(maxsize=1)
+lstm_queue = Queue()
 
 @app.post("/webcam")
 async def upload_frame(file: UploadFile = File(...)):
-    global latest_frame
     contents = await file.read()
     np_arr = np.frombuffer(contents, np.uint8)
     frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     if frame is None:
         return {"message": "Failed to decode image"}
-    with lock:
-        latest_frame = frame
+
+    if not frame_queue.empty():
+        frame_queue.get()
+
+    frame_queue.put(frame)
     return {"message": "Frame received"}
+
+
+def lstm_worker():
+    while True:
+        obj_id, sequence = lstm_queue.get()
+        predict_action(obj_id, sequence)
+        lstm_queue.task_done()
+
+lstm_thread = threading.Thread(target=lstm_worker, daemon=True)
+lstm_thread.start()
+
 
 def count_valid_keypoints(keypoints_data):
     valid_keypoint_counts = {}
@@ -86,7 +100,8 @@ def extract_keypoints(results):
 
 def predict_action(obj_id, sequence):
     input_data = np.array(sequence, dtype=np.float32).reshape(1, LSTM_SEQ_LENGTH, -1)
-    prediction = lstm_model.predict(input_data, verbose=0)
+    with tf.device('/CPU:0'):
+        prediction = lstm_model.predict(input_data, verbose=0)
     previous_actions[obj_id] = int(np.argmax(prediction))
     previous_accuracies[obj_id] = float(np.max(prediction)) * 100
 
@@ -100,16 +115,15 @@ def detect_weapons(frame):
         detected_weapons.append((tuple(map(int, box)), int(cls), float(conf) * 100))
 
 def process_video():
-    global latest_frame
     last_yolo_time = 0
     executor = ThreadPoolExecutor(max_workers=3)
     results = None
 
     while True:
-        with lock:
-            if latest_frame is None:
-                continue
-            frame = latest_frame.copy()
+        if frame_queue.empty():
+            continue
+
+        frame = frame_queue.get()
 
         current_time = time.time()
         if current_time - last_yolo_time >= 1.0 / YOLO_PROCESS_FPS:
@@ -120,12 +134,17 @@ def process_video():
             valid_keypoints = count_valid_keypoints(keypoints_data)
 
             for obj_id, keypoints in keypoints_data:
-                if valid_keypoints.get(obj_id, 0) >= 26:  # 유효한 키포인트 개수 검사
+                if keypoints is None or len(keypoints) == 0:
+                    continue
+
+                if valid_keypoints.get(obj_id, 0) >= 26:
                     if obj_id not in object_sequences:
                         object_sequences[obj_id] = deque(maxlen=LSTM_SEQ_LENGTH)
+
                     object_sequences[obj_id].append(keypoints)
+
                     if len(object_sequences[obj_id]) == LSTM_SEQ_LENGTH:
-                        executor.submit(predict_action, obj_id, list(object_sequences[obj_id]))
+                        lstm_queue.put((obj_id, list(object_sequences[obj_id])))
 
             executor.submit(detect_weapons, frame)
 
@@ -158,7 +177,7 @@ def process_video():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-@app.get("/predict/")
+@app.get("/predict")
 def predict():
     return StreamingResponse(process_video(), media_type="multipart/x-mixed-replace; boundary=frame")
 
