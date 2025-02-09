@@ -1,28 +1,42 @@
 # YOLO_LSTM
+![Python](https://img.shields.io/badge/Python-3.9-blue.svg)
+![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15.0-orange.svg)
+![CUDA](https://img.shields.io/badge/CUDA-Compatible-green.svg)
 
-## 개요
-1. 웹캠이나 동영상에서 캡처한 프레임을 YOLO-pose로 처리해 키포인트 데이터를 수집
-2. LSTM을 활용해 키포인트 데이터 시퀀스를 기반으로 행동을 예측
+## 📌 개요
+- 실시간 웹캠 기반 행동 감지
+- 다중 객체 추적 및 분석
+- 4가지 행동 패턴 분류 (정상/의심/위험/흉기)
+- FastAPI 기반 웹 인터페이스
+- 데이터 증강 및 전처리 도구
+
+
+## 🔧 환경 설정
+
+### 🖥️ 사전 요구사항
+- Python 3.9
+- CUDA 지원 GPU (권장)
+- Webcam (실시간 테스트용)
 
 ---
 
-## 0. 환경 설정
+### 🛠️ Conda 가상환경 설정
 
-### 0-1. Conda 가상환경 생성
+#### 1. 가상환경 생성
 
 ```bash
-conda create -n action_recognition python=3.12 -y
+conda create -n action_recognition python=3.9 -y
 ```
 
-### 0-2. Conda 가상환경 실행
+#### 2. 가상환경 실행
 
 ```bash
 conda activate action_recognition
 ```
 
-### 0-3. 의존성 설치
+#### 3. 의존성 설치
 
-`requirements.txt` 파일을 통해 필요한 라이브러리를 설치합니다:
+`requirements.txt` 파일을 통해 필요한 라이브러리를 설치
 
 ```bash
 pip install -r requirements.txt
@@ -30,7 +44,7 @@ pip install -r requirements.txt
 
 ---
 
-## 1. 데이터 생성
+## 📊 1. 데이터 생성
 
 ### 1-1. `LSTM_Data_Live.py`
 
@@ -66,7 +80,7 @@ pip install -r requirements.txt
 - 중복되는 파일명 존재 시, 그 다음 번호부터 시작
 ---
 
-## 2. 모델 학습
+## 🤖 2. 모델 학습
 
 ### 2-1. `LSTM_Train.ipynb`
 
@@ -83,7 +97,7 @@ pip install -r requirements.txt
 
 ---
 
-## 3. 실행
+## 🚀 3. 실행
 
 ### 3-1. `LSTM_Test.py`
 
@@ -97,35 +111,53 @@ pip install -r requirements.txt
 
 - 실시간으로 다중 YOLO 모델 예측 가능
 
-### 4. `Main.py`
+## 🌐 4. 배포
+
+### 4-1. `Fast_API.py`
 
 - LSTM과 YOLO 모델 결합하여 한 화면에 두개의 예측 동시 수행
+- /webcam에서 Webcam 프레임 전달받음
+- Danger/Weapon 탐지 시 이미지 전송
+- 원본 이미지, 탐지 이미지 각각 전송 가능
+- /predict에서 실시간 탐지 영상 확인 가능
+
+### 4-2. `Webcam.py`
+
+- Fast_API 서버로 카메라 프레임 전송
 
 ---
 
-## 클래스 분류
+## 🏷️ 클래스 분류
 
 | 클래스 번호 | 행동 분류  | 세부 동작     |
 | ------ | ------ | -------------------- |
-| 0      | normal | 가만히 서있기, 걷기, 뛰기, 앉기, 핸드폰 보기, 의자에 앉기|
+| 0      | normal  | 가만히 서있기, 걷기, 뛰기, 앉기, 핸드폰 보기, 의자에 앉기|
 | 1      | doubt  | 가방 열기, 두리번거리기                |
 | 2      | danger  | 잽, 훅, 발차기, 파운딩, 어깨잡기, 뺏기 |
-| 3      | weapon rampage   | 흉기난동                    |
+| 3      | weapon | 흉기                    |
 
 ---
 
-## 사용 환경
+## ⚙️ 시스템 요구사항
 
-- YOLO-pose 모델 사용
-- LSTM 모델 사용
-- Colab GPU 환경 (YOLO 학습)
-- 로컬 환경 (LSTM 학습 및 테스트)
+### 최소 요구사항
+- CPU: Intel i5 또는 유사사양
+- RAM: 8GB
+- 저장소: 10GB
 
----
+### 권장 요구사항
+- CPU: Intel i7 또는 유사사양
+- GPU: NVIDIA GPU (8GB VRAM)
+- RAM: 16GB
+- 저장소: 20GB
 
-## 실행 방법
+## ⚠️ 알려진 문제 및 제한 사항
 
-1. Conda 가상환경 생성 및 라이브러리 설치
-2. 데이터 생성 스크립트를 실행해 학습 데이터 준비
-3. LSTM 및 YOLO 모델 학습
-4. 실시간 예측 실행
+1. TensorFlow/Keras 버전 호환성
+   - TF 2.15.0 이하: Keras 2.x 사용
+   - TF 2.16.0 이상: Keras 3.x 필요
+   - 버전 간 모델 호환 불가
+
+2. 데이터 처리 주의사항
+   - 시퀀스 단위 데이터 정리 필수
+   - 프레임 동기화 확인 필요
