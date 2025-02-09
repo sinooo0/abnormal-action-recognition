@@ -2,8 +2,8 @@ opencv-python
 pandas
 ultralytics
 numpy
-tensorflow
-keras
+tensorflow==2.15
+keras==2.15
 scikit-learn
 roboflow
 lap
