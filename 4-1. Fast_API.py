@@ -1,19 +1,25 @@
+import os
 import cv2
-import numpy as np
+import time
 import torch
 import uvicorn
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import StreamingResponse
-from ultralytics import YOLO
-from tensorflow.keras.models import load_model
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+import requests
 import threading
-import time
-import tensorflow as tf
+import numpy as np
 from queue import Queue
+from collections import deque
+from datetime import datetime
+from ultralytics import YOLO
+from fastapi import FastAPI, UploadFile, File
+from tensorflow.keras.models import load_model
+from fastapi.responses import StreamingResponse
+from concurrent.futures import ThreadPoolExecutor
+import tensorflow as tf
 
 app = FastAPI()
+
+SPRING_URL = "https://4035-111-91-156-203.ngrok-free.app/api/anomalies"
+FACE_API_URL = ""
 
 LSTM_SEQ_LENGTH = 6  # LSTM 시퀀스 수
 YOLO_PROCESS_FPS = 6  # 초당 YOLO 프레임 수
@@ -34,8 +40,8 @@ print(f"Using device: {device}")
 
 # 모델 로드 (YOLO Pose, YOLO Weapon, LSTM)
 yolo_pose = YOLO("./Model/yolo11l-pose.pt").to(device)
-yolo_weapon = YOLO("./Model/yolo11m-weapon.pt").to(device)
-lstm_model = load_model("./Model/LSTM_GPU.h5", compile=False)
+yolo_weapon = YOLO("./Model/yolo-weapon.pt").to(device)
+lstm_model = load_model("./Model/LSTM.h5", compile=False)
 weapon_class_names = yolo_weapon.model.names
 
 # 행동 라벨
@@ -51,6 +57,12 @@ detected_weapons = []
 frame_queue = Queue(maxsize=1)
 lstm_queue = Queue()
 
+# 중복 알림 전송 방지
+last_sent_time = 0
+min_alert_interval = 10 # 알림 간격 설정(초)
+sent_frames = set()
+
+# 웹캠 프레임 수신
 @app.post("/webcam")
 async def upload_frame(file: UploadFile = File(...)):
     contents = await file.read()
@@ -75,7 +87,9 @@ def lstm_worker():
 lstm_thread = threading.Thread(target=lstm_worker, daemon=True)
 lstm_thread.start()
 
+alert_executor = ThreadPoolExecutor(max_workers=2)
 
+# 유효 키포인트 처리
 def count_valid_keypoints(keypoints_data):
     valid_keypoint_counts = {}
     for obj_id, keypoints in keypoints_data:
@@ -83,6 +97,7 @@ def count_valid_keypoints(keypoints_data):
         valid_keypoint_counts[obj_id] = valid_count
     return valid_keypoint_counts
 
+# 키포인트 추출
 def extract_keypoints(results):
     keypoints_data = []
     if results[0].keypoints is not None and results[0].boxes is not None:
@@ -98,22 +113,103 @@ def extract_keypoints(results):
             keypoints_data.append((int(obj_id), relative_keypoints.astype(np.float32)))
     return keypoints_data
 
+# 행동 예측
 def predict_action(obj_id, sequence):
     input_data = np.array(sequence, dtype=np.float32).reshape(1, LSTM_SEQ_LENGTH, -1)
     with tf.device('/CPU:0'):
         prediction = lstm_model.predict(input_data, verbose=0)
-    previous_actions[obj_id] = int(np.argmax(prediction))
-    previous_accuracies[obj_id] = float(np.max(prediction)) * 100
 
+    action_idx = int(np.argmax(prediction))
+    accuracy = float(np.max(prediction)) * 100
+    previous_actions[obj_id] = action_idx
+    previous_accuracies[obj_id] = accuracy
+
+# 무기 탐지
 def detect_weapons(frame):
     with torch.no_grad():
-        results = yolo_weapon(frame, verbose=False)
+        results = yolo_weapon(frame, conf=0.7, verbose=False)
+
     detected_weapons.clear()
     for box, cls, conf in zip(results[0].boxes.xyxy.cpu().numpy(),
                               results[0].boxes.cls.cpu().numpy(),
                               results[0].boxes.conf.cpu().numpy()):
-        detected_weapons.append((tuple(map(int, box)), int(cls), float(conf) * 100))
+        confidence = float(conf) * 100
+        detected_weapons.append((tuple(map(int, box)), int(cls), confidence))
 
+# 위험 알림 전송
+def crime_alert(frame, raw_frame, alert_type, confidence):
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    filename = f"{alert_type}_{confidence:.1f}_{timestamp}.jpg"
+
+    if filename in sent_frames:
+        return
+    sent_frames.add(filename)
+
+    # SPRING 서버로 탐지 이미지 전송
+    _, buffer = cv2.imencode(".jpg", frame)
+    img_bytes = buffer.tobytes()
+
+    files = {'file': (filename, img_bytes, 'image/jpeg')}
+    response = requests.post(SPRING_URL, files=files)
+
+    print(f"Sent {filename} to Spring, Response: {response.status_code}")
+    
+    # FACE_API 서버로 탐지 이미지 전송
+    _, buffer = cv2.imencode(".jpg", raw_frame)
+    img_bytes = buffer.tobytes()
+
+    files = {'file': (filename, img_bytes, 'image/jpeg')}
+    response = requests.post(FACE_API_URL, files=files)
+
+    print(f"Sent RAW {filename} to Face_API, Response: {response.status_code}")
+
+# 알림 조건 설정
+def process_alerts(frame, raw_frame, detected_weapons, previous_actions, previous_accuracies):
+    global last_sent_time
+
+    # 알림 전송 시간 설정
+    current_time = time.time()
+    if current_time - last_sent_time < min_alert_interval:
+        return
+
+    danger_detected = False
+    weapon_detected = False
+    highest_weapon_conf = 0
+    weapon_class_name = ""
+
+    # Danger가 95% 이상이면 알림
+    for obj_id, action in previous_actions.items():
+        accuracy = previous_accuracies.get(obj_id, 0.0)
+        if action == 2 and accuracy >= 95:
+            danger_detected = True
+            danger_accuracy = accuracy
+
+    # 무기 탐지가 80% 이상이면 알림
+    for (x1, y1, x2, y2), cls, conf in detected_weapons:
+        if conf >= 80 and conf > highest_weapon_conf:
+            highest_weapon_conf = conf
+            weapon_class_name = weapon_class_names[cls]
+            weapon_detected = True
+
+    # 동시에 탐지되면 무기를 우선순위로 알림을 전송
+    if weapon_detected:
+        alert_executor.submit(crime_alert, frame, raw_frame, weapon_class_name, highest_weapon_conf)
+        last_sent_time = current_time
+    elif danger_detected:
+        alert_executor.submit(crime_alert, frame, raw_frame, "Danger", danger_accuracy)
+        last_sent_time = current_time
+
+    # 중복 알림 방지
+    if weapon_detected or danger_detected:
+        reset_time = current_time + min_alert_interval - 1
+        threading.Timer(reset_time - current_time, reset_object_state, args=(previous_actions, previous_accuracies)).start()
+
+# 클래스 정보 초기화
+def reset_object_state(previous_actions, previous_accuracies):
+    previous_actions.clear()
+    previous_accuracies.clear()
+
+# 전체 영상 처리
 def process_video():
     last_yolo_time = 0
     executor = ThreadPoolExecutor(max_workers=3)
@@ -124,6 +220,7 @@ def process_video():
             continue
 
         frame = frame_queue.get()
+        raw_frame = frame
 
         current_time = time.time()
         if current_time - last_yolo_time >= 1.0 / YOLO_PROCESS_FPS:
@@ -137,7 +234,7 @@ def process_video():
                 if keypoints is None or len(keypoints) == 0:
                     continue
 
-                if valid_keypoints.get(obj_id, 0) >= 26:
+                if valid_keypoints.get(obj_id, 0) >= 24:
                     if obj_id not in object_sequences:
                         object_sequences[obj_id] = deque(maxlen=LSTM_SEQ_LENGTH)
 
@@ -154,11 +251,11 @@ def process_video():
 
             for obj_id, box in zip(ids, boxes):
                 x1, y1, x2, y2 = map(int, box)
-                if valid_keypoints.get(obj_id, 0) >= 26:
+                if valid_keypoints.get(obj_id, 0) >= 24:
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
 
                     action_label = action_labels.get(previous_actions.get(obj_id, 0), "Normal")
-                    accuracy = previous_accuracies.get(obj_id, 0.0)
+                    accuracy = previous_accuracies.get(obj_id, 100.0)
                     label_text = f"ID {obj_id}: {action_label} ({accuracy:.1f}%)"
 
                     cv2.rectangle(frame, (x1, y1 - 20), (x1 + len(label_text) * 10, y1), (255, 200, 0), -1)
@@ -171,6 +268,8 @@ def process_video():
             text_size = cv2.getTextSize(weapon_label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
             cv2.rectangle(frame, (x1, y1 - text_size[1] - 4), (x1 + text_size[0], y1 + 4), (255, 0, 0), -1)
             cv2.putText(frame, weapon_label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        executor.submit(process_alerts, frame, raw_frame, detected_weapons, previous_actions, previous_accuracies)
 
         _, buffer = cv2.imencode(".jpg", frame)
         frame_bytes = buffer.tobytes()
