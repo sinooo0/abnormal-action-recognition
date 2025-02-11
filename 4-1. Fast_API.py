@@ -18,8 +18,8 @@ import tensorflow as tf
 
 app = FastAPI()
 
-SPRING_URL = "https://4035-111-91-156-203.ngrok-free.app/api/anomalies"
-FACE_API_URL = ""
+SPRING_URL = "https://crime-spring-h4hwhacpa6a2f0d0.koreacentral-01.azurewebsites.net/api/anomalies"
+FACE_API_URL = "https://face-api-dnbbgjgmh6gvdug7.koreacentral-01.azurewebsites.net/detect"
 
 LSTM_SEQ_LENGTH = 6  # LSTM 시퀀스 수
 YOLO_PROCESS_FPS = 6  # 초당 YOLO 프레임 수
@@ -39,7 +39,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 # 모델 로드 (YOLO Pose, YOLO Weapon, LSTM)
-yolo_pose = YOLO("./Model/yolo11l-pose.pt").to(device)
+yolo_pose = YOLO("./Model/yolo11m-pose.pt").to(device)
 yolo_weapon = YOLO("./Model/yolo-weapon.pt").to(device)
 lstm_model = load_model("./Model/LSTM.h5", compile=False)
 weapon_class_names = yolo_weapon.model.names
@@ -127,7 +127,7 @@ def predict_action(obj_id, sequence):
 # 무기 탐지
 def detect_weapons(frame):
     with torch.no_grad():
-        results = yolo_weapon(frame, conf=0.7, verbose=False)
+        results = yolo_weapon(frame, conf=0.8, verbose=False)
 
     detected_weapons.clear()
     for box, cls, conf in zip(results[0].boxes.xyxy.cpu().numpy(),
@@ -220,7 +220,7 @@ def process_video():
             continue
 
         frame = frame_queue.get()
-        raw_frame = frame
+        raw_frame = frame.copy()
 
         current_time = time.time()
         if current_time - last_yolo_time >= 1.0 / YOLO_PROCESS_FPS:
