@@ -7,7 +7,7 @@ def get_next_filename(directory, extension='.mp4'):
     existing_files = [f for f in os.listdir(directory) if f.startswith(base_name) and f.endswith(extension)]
     numbers = [int(f[len(base_name):-len(extension)]) for f in existing_files if f[len(base_name):-len(extension)].isdigit()]
     next_number = max(numbers, default=0) + 1
-    return os.path.join(directory, f"{base_name}_{next_number}{extension}")
+    return os.path.join(directory, f"{base_name}{next_number}{extension}")
 
 def record_video(camera_index, save_dir, duration):
     cap = cv2.VideoCapture(camera_index)
@@ -54,6 +54,6 @@ def record_video(camera_index, save_dir, duration):
 
 # 실행
 camera_index = 1 # 카메라 번호 설정
-save_path = './Video/1. doubt' # 저장 경로 설정
+save_path = './Video/2. danger' # 저장 경로 설정
 duration = 5 # 녹화 시간(초) 설정
 record_video(camera_index, save_path, duration)

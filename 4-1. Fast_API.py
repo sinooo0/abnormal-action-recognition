@@ -18,11 +18,11 @@ import tensorflow as tf
 
 app = FastAPI()
 
-SPRING_URL = "https://crime-spring-h4hwhacpa6a2f0d0.koreacentral-01.azurewebsites.net/api/anomalies"
+SPRING_URL = "https://spring-platform-cmbdcxhwdsgbcwda.koreacentral-01.azurewebsites.net/api/anomalies"
 FACE_API_URL = "https://face-api-dnbbgjgmh6gvdug7.koreacentral-01.azurewebsites.net/detect"
 
-LSTM_SEQ_LENGTH = 6  # LSTM 시퀀스 수
-YOLO_PROCESS_FPS = 6  # 초당 YOLO 프레임 수
+LSTM_SEQ_LENGTH = 9  # LSTM 시퀀스 수
+YOLO_PROCESS_FPS = 30  # 초당 YOLO 프레임 수
 
 # TensorFlow GPU 메모리 증가 설정
 gpus = tf.config.list_physical_devices('GPU')
@@ -39,7 +39,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 # 모델 로드 (YOLO Pose, YOLO Weapon, LSTM)
-yolo_pose = YOLO("./Model/yolo11m-pose.pt").to(device)
+yolo_pose = YOLO("./Model/yolo11s-pose.pt").to(device)
 yolo_weapon = YOLO("./Model/yolo-weapon.pt").to(device)
 lstm_model = load_model("./Model/LSTM.h5", compile=False)
 weapon_class_names = yolo_weapon.model.names
@@ -209,6 +209,7 @@ def reset_object_state(previous_actions, previous_accuracies):
     previous_actions.clear()
     previous_accuracies.clear()
 
+sequence_start_times = {}
 # 전체 영상 처리
 def process_video():
     last_yolo_time = 0
