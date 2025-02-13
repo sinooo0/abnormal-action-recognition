@@ -1,0 +1,12 @@
+opencv-python
+pandas
+ultralytics
+numpy
+tensorflow==2.15.0
+keras==2.15.0
+scikit-learn
+roboflow
+lap
+fastapi
+uvicorn
+python-multipart

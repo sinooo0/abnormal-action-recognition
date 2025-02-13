@@ -1,0 +1,22 @@
+구름 IDE NVIDIA T4 컨테이너
+
+0. URL/Port에서 8000번 포트 열기
+
+1. GPU 사용 설정
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A4B469963BF863CC
+sudo apt-get update
+
+2. 초기 설정
+sudo apt-get install python3.9
+sudo apt install python3.9-venv
+python3.9 -m venv fast_api
+source fast_api/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+sudo apt update
+sudo apt install -y libgl1
+
+3. API_Server 파일 업로드
+
+4. 실행
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
