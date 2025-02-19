@@ -105,6 +105,10 @@ def extract_keypoints(results):
         ids = results[0].boxes.id.cpu().numpy() if results[0].boxes.id is not None else range(len(keypoints))
         
         for person_id, person_keypoints in zip(ids, keypoints):
+            num_keypoints = person_keypoints.shape[0]
+            if num_keypoints < 13:
+                continue
+            
             hip_center_x = (person_keypoints[11, 0] + person_keypoints[12, 0]) / 2
             hip_center_y = (person_keypoints[11, 1] + person_keypoints[12, 1]) / 2
             
