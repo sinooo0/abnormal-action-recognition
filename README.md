@@ -1,4 +1,4 @@
-# YOLO_LSTM
+# abnormal-action-recognition
 ![Python](https://img.shields.io/badge/Python-3.9-blue.svg)
 ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15.0-orange.svg)
 ![CUDA](https://img.shields.io/badge/CUDA-Compatible-green.svg)
